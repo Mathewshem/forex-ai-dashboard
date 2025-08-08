@@ -1,14 +1,15 @@
 import pyrebase
+import streamlit as st
 
 firebase_config = {
-    "apiKey": "AIzaSyBa4-3q9biWgxXyDB7C0sJi_imye2_f6lM",
-    "authDomain": "forexai-dashboard-4413b.firebaseapp.com",
-    "projectId": "forexai-dashboard-4413b",
-    "storageBucket": "forexai-dashboard-4413b.appspot.com",  # FIXED typo (.app → .appspot.com)
-    "messagingSenderId": "781579143280",
-    "appId": "1:781579143280:web:012fa56ee10f07d4d10cb5",
-    "measurementId": "G-GLVVJWRVFN",
-    "databaseURL": ""  # leave this empty unless using realtime DB
+    "apiKey": st.secrets["firebase"]["api_key"],
+    "authDomain": st.secrets["firebase"]["auth_domain"],
+    "projectId": st.secrets["firebase"]["project_id"],
+    "storageBucket": st.secrets["firebase"]["storage_bucket"],
+    "messagingSenderId": st.secrets["firebase"]["messaging_sender_id"],
+    "appId": st.secrets["firebase"]["app_id"],
+    "measurementId": st.secrets["firebase"]["measurement_id"],
+    "databaseURL": ""  # Optional: Only needed for real-time DB
 }
 
 firebase = pyrebase.initialize_app(firebase_config)

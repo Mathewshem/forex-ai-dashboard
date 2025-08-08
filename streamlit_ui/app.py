@@ -205,8 +205,8 @@ else:
     st.warning("🔒 Prophet forecast is locked. Enter access code to unlock.")
 
 # Telegram config
-BOT_TOKEN = "8230694522:AAGtK_pPK_g7nIyt1y7F62CsgGDMFTcZ6cU"
-CHAT_ID = 5389102928  # DrShem StatQuest
+BOT_TOKEN = st.secrets["telegram"]["bot_token"]
+CHAT_ID = st.secrets["telegram"]["chat_id"]  # DrShem StatQuest
 
 # Alert Logic
 for _, row in df.iterrows():
