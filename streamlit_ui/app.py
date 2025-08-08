@@ -128,26 +128,6 @@ fig.update_layout(
 
 st.plotly_chart(fig, use_container_width=True)
 
-# --- Sidebar Login ---
-st.sidebar.title("🔐 Login")
-email = st.sidebar.text_input("Email")
-password = st.sidebar.text_input("Password", type="password")
-
-if "logged_in" not in st.session_state:
-    st.session_state["logged_in"] = False
-
-if st.sidebar.button("Login"):
-    user = login(email, password)
-    if user:
-        st.session_state["logged_in"] = True
-        st.session_state["user_email"] = email
-        st.success("✅ Login successful!")
-    else:
-        st.error("❌ Invalid credentials")
-
-if not st.session_state["logged_in"]:
-    st.warning("🚫 Please log in to access premium features.")
-    st.stop()
 #st.subheader("📉 Prophet Forecast")
 
 #raw, prediction = forecast_price(selected_symbol)
@@ -279,3 +259,24 @@ if latest_file:
     st.dataframe(df_summary.sort_values(by="score", ascending=False), use_container_width=True)
 else:
     st.info("No reports generated yet.")
+
+# --- Sidebar Login ---
+st.sidebar.title("🔐 Login")
+email = st.sidebar.text_input("Email")
+password = st.sidebar.text_input("Password", type="password")
+
+if "logged_in" not in st.session_state:
+    st.session_state["logged_in"] = False
+
+if st.sidebar.button("Login"):
+    user = login(email, password)
+    if user:
+        st.session_state["logged_in"] = True
+        st.session_state["user_email"] = email
+        st.success("✅ Login successful!")
+    else:
+        st.error("❌ Invalid credentials")
+
+if not st.session_state["logged_in"]:
+    st.warning("🚫 Please log in to access premium features.")
+    st.stop()
