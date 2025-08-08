@@ -9,7 +9,7 @@ firebase_config = {
     "messagingSenderId": st.secrets["firebase"]["messaging_sender_id"],
     "appId": st.secrets["firebase"]["app_id"],
     "measurementId": st.secrets["firebase"]["measurement_id"],
-    "databaseURL": ""  # Optional: Only needed for real-time DB
+    "databaseURL": "https://forexai-dashboard-4413b.firebaseio.com"  # Optional: Only needed for real-time DB
 }
 
 firebase = pyrebase.initialize_app(firebase_config)
