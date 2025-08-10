@@ -6,8 +6,6 @@ import sys
 import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from utils.telegram_bot import send_telegram_message
-
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from scoring.scoring_engine import score_asset
@@ -184,46 +182,6 @@ if AUTHORIZED:
 else:
     st.warning("🔒 Prophet forecast is locked. Enter access code to unlock.")
 
-# Telegram config
-BOT_TOKEN = st.secrets["telegram"]["bot_token"]
-CHAT_ID = st.secrets["telegram"]["chat_id"]  # DrShem StatQuest
-
-# Alert Logic
-for _, row in df.iterrows():
-    if row['score'] >= 4:
-        send_telegram_message(
-            BOT_TOKEN, CHAT_ID,
-            f"📈 *BUY Signal*: {row['symbol']} → Score: {row['score']}"
-        )
-    elif row['score'] <= -3:
-        send_telegram_message(
-            BOT_TOKEN, CHAT_ID,
-            f"📉 *SELL Signal*: {row['symbol']} → Score: {row['score']}"
-        )
-
-    # ✅ Prophet alert — inside the same loop
-    if row.get('forecast_signal') == 1:
-        send_telegram_message(
-            BOT_TOKEN, CHAT_ID,
-            f"🤖 Prophet AI: {row['symbol']} is expected to rise 📈"
-        )
-    elif row.get('forecast_signal') == -1:
-        send_telegram_message(
-            BOT_TOKEN, CHAT_ID,
-            f"🤖 Prophet AI: {row['symbol']} is expected to fall 📉"
-        )
-    if row['score'] >= 4:
-        send_telegram_message(BOT_TOKEN, CHAT_ID, f"📈 *BUY Signal*: {row['symbol']} → Score: {row['score']}")
-        log_signal(row['symbol'], "BUY", row['score'])
-
-    elif row['score'] <= -3:
-        send_telegram_message(BOT_TOKEN, CHAT_ID, f"📉 *SELL Signal*: {row['symbol']} → Score: {row['score']}")
-        log_signal(row['symbol'], "SELL", row['score'])
-
-    if row.get('forecast_signal') == 1:
-        log_signal(row['symbol'], "BUY Forecast", row['score'], source="Prophet AI")
-    elif row.get('forecast_signal') == -1:
-        log_signal(row['symbol'], "SELL Forecast", row['score'], source="Prophet AI")
 
 
 st.subheader("📓 Trade Signal Journal")
@@ -280,3 +238,107 @@ if st.sidebar.button("Login"):
 if not st.session_state["logged_in"]:
     st.warning("🚫 Please log in to access premium features.")
     st.stop()
+
+import time
+import streamlit as st
+
+# --- Telegram helper (matches our 3-arg call) ---
+def send_telegram_message(bot_token: str, chat_id: int | str, text: str, parse_mode: str = "Markdown") -> dict:
+    import requests
+    if not bot_token or not chat_id:
+        raise TypeError("BOT_TOKEN and CHAT_ID must be set (not None/empty).")
+    url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+    payload = {"chat_id": str(chat_id), "text": str(text), "parse_mode": parse_mode}
+    r = requests.post(url, json=payload, timeout=15)
+    r.raise_for_status()
+    return r.json()
+
+# --- Telegram config (from Streamlit secrets) ---
+BOT_TOKEN = st.secrets["telegram"]["bot_token"]
+CHAT_ID = str(st.secrets["telegram"]["chat_id"])  # group IDs can be negative; keep as string is fine
+
+# ================= Edge-trigger + cooldown guards =================
+# Tracks last state per (symbol, kind). Survives reruns within the same session.
+if "last_status" not in st.session_state:
+    # structure: {(sym, "BUY"/"SELL"/"FBUY"/"FSELL"): {"active": bool, "last_time": float}}
+    st.session_state.last_status = {}
+
+COOLDOWN_MIN = 30  # don't resend same (symbol, kind) within 30 minutes
+
+def _cooldown_ok(key: tuple[str, str]) -> bool:
+    last_time = st.session_state.last_status.get(key, {}).get("last_time", 0.0)
+    return (time.time() - last_time) >= COOLDOWN_MIN * 60
+
+def _mark_sent(key: tuple[str, str]) -> None:
+    st.session_state.last_status.setdefault(key, {})
+    st.session_state.last_status[key]["last_time"] = time.time()
+
+def _set_active(key: tuple[str, str], value: bool) -> None:
+    st.session_state.last_status.setdefault(key, {})
+    st.session_state.last_status[key]["active"] = value
+
+def _was_active(key: tuple[str, str]) -> bool:
+    return st.session_state.last_status.get(key, {}).get("active", False)
+
+def _rising_edge(prev_active: bool, now_active: bool) -> bool:
+    # Send only when condition becomes true (False -> True)
+    return (not prev_active) and now_active
+
+# ===================== ALERT LOGIC (edge-triggered) =====================
+# NOTE: assumes you already have df populated and log_signal(...) defined
+for _, row in df.iterrows():
+    sym   = str(row.get("symbol", "")).strip()
+    score = float(row.get("score", 0))
+    f_sig = int(row.get("forecast_signal", 0))
+
+    # ---------- BUY (score >= 4) ----------
+    buy_key = (sym, "BUY")
+    buy_now = (score >= 4)
+    if _rising_edge(_was_active(buy_key), buy_now) and _cooldown_ok(buy_key):
+        msg = f"📈 *BUY Signal*: {sym} → Score: {score:.2f}"
+        try:
+            send_telegram_message(BOT_TOKEN, CHAT_ID, msg)
+            log_signal(sym, "BUY", score)
+            _mark_sent(buy_key)
+        except Exception as e:
+            st.error(f"Failed to send BUY: {e}")
+    _set_active(buy_key, buy_now)
+
+    # ---------- SELL (score <= -3) ----------
+    sell_key = (sym, "SELL")
+    sell_now = (score <= -3)
+    if _rising_edge(_was_active(sell_key), sell_now) and _cooldown_ok(sell_key):
+        msg = f"📉 *SELL Signal*: {sym} → Score: {score:.2f}"
+        try:
+            send_telegram_message(BOT_TOKEN, CHAT_ID, msg)
+            log_signal(sym, "SELL", score)
+            _mark_sent(sell_key)
+        except Exception as e:
+            st.error(f"Failed to send SELL: {e}")
+    _set_active(sell_key, sell_now)
+
+    # ---------- Prophet BUY forecast (forecast_signal == 1) ----------
+    fbuy_key = (sym, "FBUY")
+    fbuy_now = (f_sig == 1)
+    if _rising_edge(_was_active(fbuy_key), fbuy_now) and _cooldown_ok(fbuy_key):
+        msg = f"🤖 Prophet AI: {sym} is expected to rise 📈"
+        try:
+            send_telegram_message(BOT_TOKEN, CHAT_ID, msg)
+            log_signal(sym, "BUY Forecast", score, source="Prophet AI")
+            _mark_sent(fbuy_key)
+        except Exception as e:
+            st.error(f"Failed to send forecast BUY: {e}")
+    _set_active(fbuy_key, fbuy_now)
+
+    # ---------- Prophet SELL forecast (forecast_signal == -1) ----------
+    fsell_key = (sym, "FSELL")
+    fsell_now = (f_sig == -1)
+    if _rising_edge(_was_active(fsell_key), fsell_now) and _cooldown_ok(fsell_key):
+        msg = f"🤖 Prophet AI: {sym} is expected to fall 📉"
+        try:
+            send_telegram_message(BOT_TOKEN, CHAT_ID, msg)
+            log_signal(sym, "SELL Forecast", score, source="Prophet AI")
+            _mark_sent(fsell_key)
+        except Exception as e:
+            st.error(f"Failed to send forecast SELL: {e}")
+    _set_active(fsell_key, fsell_now)
